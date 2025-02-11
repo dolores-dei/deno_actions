@@ -1,6 +1,6 @@
-import { Octokit } from "https://esm.sh/octokit?dts";
+import { Octokit } from "https://esm.sh/octokit@4.1.0?dts";
 import { AppConfig } from "./types.ts";
-import { load } from "https://deno.land/std/dotenv/mod.ts";
+import { load } from "https://deno.land/std@0.224.0/dotenv/mod.ts";
 
 // Load environment variables from .env file
 await load({ export: true });
