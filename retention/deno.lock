@@ -1,6 +1,7 @@
 {
   "version": "4",
   "redirects": {
+    "https://deno.land/std/dotenv/mod.ts": "https://deno.land/std@0.224.0/dotenv/mod.ts",
     "https://esm.sh/@octokit/app@^15.1.2?target=denonext": "https://esm.sh/@octokit/app@15.1.2?target=denonext",
     "https://esm.sh/@octokit/auth-app@^7.1.4?target=denonext": "https://esm.sh/@octokit/auth-app@7.1.4?target=denonext",
     "https://esm.sh/@octokit/auth-oauth-app@^8.1.2?target=denonext": "https://esm.sh/@octokit/auth-oauth-app@8.1.2?target=denonext",
@@ -37,6 +38,9 @@
     "https://esm.sh/universal-user-agent@^7.0.2?target=denonext": "https://esm.sh/universal-user-agent@7.0.2?target=denonext"
   },
   "remote": {
+    "https://deno.land/std@0.224.0/dotenv/mod.ts": "0180eaeedaaf88647318811cdaa418cc64dc51fb08354f91f5f480d0a1309f7d",
+    "https://deno.land/std@0.224.0/dotenv/parse.ts": "09977ff88dfd1f24f9973a338f0f91bbdb9307eb5ff6085446e7c423e4c7ba0c",
+    "https://deno.land/std@0.224.0/dotenv/stringify.ts": "275da322c409170160440836342eaa7cf012a1d11a7e700d8ca4e7f2f8aa4615",
     "https://esm.sh/@octokit/app@15.1.2/denonext/app.mjs": "21c4fdfecfc4540b17c21b3c0cf1e0a5c7eb55bab034978af33d7dd7a06ab4ab",
     "https://esm.sh/@octokit/app@15.1.2?target=denonext": "51ad31b108532bc255a43647574518580d5e95d5ad7a968df7bb477b71b59e79",
     "https://esm.sh/@octokit/auth-app@7.1.4/denonext/auth-app.mjs": "c2c8bc96d4760e5a0af7535c1aa669ebc8b490764b575d8113632515f11760c6",

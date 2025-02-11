@@ -1,5 +1,9 @@
 import { Octokit } from "https://esm.sh/octokit?dts";
 import { AppConfig } from "./types.ts";
+import { load } from "https://deno.land/std/dotenv/mod.ts";
+
+// Load environment variables from .env file
+await load({ export: true });
 
 const env = {
   number: (name: string, defaultValue: number): number => {
@@ -17,10 +21,10 @@ export const config: AppConfig = {
   GITHUB_TOKEN: env.string("GITHUB_TOKEN", true),
   RETENTION_HOURS: env.number("RETENTION_HOURS", 0.1),
   INACTIVITY_THRESHOLD_HOURS: env.number("INACTIVITY_THRESHOLD_HOURS", 0.05),
-  OWNER: "dolores-dei",
-  REPO: "deno_actions",
+  OWNER: env.string("GITHUB_OWNER", true),
+  REPO: env.string("GITHUB_REPO", true),
   WARNING_LABEL: "retention-warning",
-  BOT_USERNAME: "dolores-dei"
+  BOT_USERNAME: env.string("GITHUB_OWNER", true)
 } as const;
 
 export const octokit = new Octokit({

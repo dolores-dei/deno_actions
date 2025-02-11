@@ -1,39 +1,44 @@
 import { octokit, config } from "./config.ts";
-import { Issue, OperationResult, IssueComment } from "./types.ts";
+import { Issue, OperationResult, Activity, IssueState } from "./types.ts";
 import { getQAReadyInstances, getOpenIssuesWithComments } from "./issues-api.ts";
 
 const { OWNER, REPO, WARNING_LABEL, BOT_USERNAME, RETENTION_HOURS, INACTIVITY_THRESHOLD_HOURS } = config;
 
-const hoursSince = (date: string) =>
+/**
+ * Calculates the number of hours between now and a given date
+ */
+const hoursSince = (date: string): number =>
   Number(((Date.now() - new Date(date).getTime()) / 3600000).toFixed(2));
-//could do with a rewrite tbh
-const debug = (msg: string, data: unknown) =>
+
+/**
+ * Debug logging helper
+ */
+const debug = (msg: string, data: unknown): void => {
   console.log(`[DEBUG] ${msg}:`, JSON.stringify(data, null, 2));
-
-// Helper to check if a date is after another date
-const isAfter = (date1: Date, date2: Date) => date1.getTime() > date2.getTime();
-
-type Activity = {
-  date: Date;
-  type: 'creation' | 'comment';
-  isBot: boolean;
 };
 
-// Get all activity on an issue, sorted by date
+/**
+ * Checks if one date is after another
+ */
+const isAfter = (date1: Date, date2: Date): boolean => date1.getTime() > date2.getTime();
+
+/**
+ * Gets all activity on an issue, sorted by date
+ */
 const getIssueActivity = (issue: Issue): Activity[] => {
   const activities: Activity[] = [
     {
       date: new Date(issue.created_at),
       type: 'creation',
-      isBot: issue.user.login === BOT_USERNAME
-    }
+      isBot: issue.user.login === BOT_USERNAME,
+    },
   ];
 
   if (issue.comments) {
     const commentActivities: Activity[] = issue.comments.map(comment => ({
       date: new Date(comment.created_at),
       type: 'comment',
-      isBot: comment.user.login === BOT_USERNAME
+      isBot: comment.user.login === BOT_USERNAME,
     }));
     activities.push(...commentActivities);
   }
@@ -41,8 +46,10 @@ const getIssueActivity = (issue: Issue): Activity[] => {
   return activities.sort((a, b) => a.date.getTime() - b.date.getTime());
 };
 
-// Get the last human activity and warning state
-const getIssueState = (issue: Issue) => {
+/**
+ * Gets the current state of an issue including last activity and warning status
+ */
+const getIssueState = (issue: Issue): IssueState => {
   const activities = getIssueActivity(issue);
   const hasWarning = issue.labels.some(l => l.name === WARNING_LABEL);
 
@@ -51,93 +58,115 @@ const getIssueState = (issue: Issue) => {
     .filter(a => a.isBot && a.type === 'comment')
     .find(a => issue.comments?.find(c =>
       new Date(c.created_at).getTime() === a.date.getTime() &&
-      c.body?.includes('WARNING:')
+      c.body?.includes('QA Instance Retention Warning')
     ));
 
   // Find the last human activity
-  const lastHumanActivity = activities
-    .filter(a => !a.isBot)
-    .reduce((latest, current) =>
-      current.date.getTime() > latest.date.getTime() ? current : latest
-    );
+  const humanActivities = activities.filter(a => !a.isBot);
+  const lastHumanActivity = humanActivities.length > 0
+    ? humanActivities.reduce((latest, current) =>
+        current.date.getTime() > latest.date.getTime() ? current : latest
+      ).date
+    : new Date(issue.created_at);
 
   return {
-    lastHumanActivity: lastHumanActivity.date,
+    lastHumanActivity,
     warningDate: warningComment?.date,
     hasWarning,
-    hoursSinceActivity: hoursSince(lastHumanActivity.date.toISOString())
+    hoursSinceActivity: hoursSince(lastHumanActivity.toISOString()),
   };
 };
 
-//removes the warning label if a non-bot user comments after a warning has been issued
+/**
+ * Removes the warning label from an issue
+ */
 async function removeWarningLabel(issueNumber: number): Promise<void> {
   try {
     await octokit.rest.issues.removeLabel({
       owner: OWNER,
       repo: REPO,
       issue_number: issueNumber,
-      name: WARNING_LABEL
+      name: WARNING_LABEL,
     });
     debug("Removed warning label", { issueNumber });
   } catch (error) {
-    console.error(`Failed to remove warning label from issue #${issueNumber}:`, error);
+    console.error(`Failed to remove warning label from issue #${issueNumber}:`, error instanceof Error ? error.message : error);
   }
 }
 
+/**
+ * Gets all QA instances that have expired but haven't been warned yet
+ */
 export async function getExpiredQAInstances(): Promise<Issue[]> {
-  const instances = await getQAReadyInstances();
-  const instancesWithComments = await getOpenIssuesWithComments();
+  try {
+    const instances = await getQAReadyInstances();
+    const instancesWithComments = await getOpenIssuesWithComments();
 
-  const result = await Promise.all(instances.map(async (issue) => {
-    const fullIssue = instancesWithComments.find(i => i.number === issue.number);
-    if (!fullIssue) return null;
+    const result = await Promise.all(instances.map(async (issue) => {
+      const fullIssue = instancesWithComments.find(i => i.number === issue.number);
+      if (!fullIssue) return null;
 
-    const { lastHumanActivity, warningDate, hasWarning, hoursSinceActivity } = getIssueState(fullIssue);
+      const { lastHumanActivity, warningDate, hasWarning, hoursSinceActivity } = getIssueState(fullIssue);
 
-    // If there's a warning but activity after it, remove the warning
-    if (hasWarning && warningDate && isAfter(lastHumanActivity, warningDate)) {
-      await removeWarningLabel(issue.number);
-      return null;
-    }
+      // If there's a warning but activity after it, remove the warning
+      if (hasWarning && warningDate && isAfter(lastHumanActivity, warningDate)) {
+        await removeWarningLabel(issue.number);
+        return null;
+      }
 
-    // Return issue if it's expired and doesn't have a warning
-    return hoursSinceActivity > RETENTION_HOURS && !hasWarning ? issue : null;
-  }));
+      // Return issue if it's expired and doesn't have a warning
+      return hoursSinceActivity > RETENTION_HOURS && !hasWarning ? issue : null;
+    }));
 
-  return result.filter((issue): issue is Issue => issue !== null);
+    return result.filter((issue): issue is Issue => issue !== null);
+  } catch (error) {
+    console.error("Failed to get expired QA instances:", error instanceof Error ? error.message : error);
+    return [];
+  }
 }
 
+/**
+ * Gets all warned issues that have been inactive for too long
+ */
 export async function getInactiveWarnedIssues(): Promise<Issue[]> {
-  const issues = await getOpenIssuesWithComments();
+  try {
+    const issues = await getOpenIssuesWithComments();
 
-  return issues.filter(issue => {
-    const { lastHumanActivity, warningDate, hasWarning, hoursSinceActivity } = getIssueState(issue);
+    return issues.filter(issue => {
+      const { lastHumanActivity, warningDate, hasWarning, hoursSinceActivity } = getIssueState(issue);
 
-    if (!hasWarning || !warningDate) return false;
+      if (!hasWarning || !warningDate) return false;
 
-    const activityAfterWarning = isAfter(lastHumanActivity, warningDate);
-    return !activityAfterWarning && hoursSinceActivity > INACTIVITY_THRESHOLD_HOURS;
-  });
+      const activityAfterWarning = isAfter(lastHumanActivity, warningDate);
+      return !activityAfterWarning && hoursSinceActivity > INACTIVITY_THRESHOLD_HOURS;
+    });
+  } catch (error) {
+    console.error("Failed to get inactive warned issues:", error instanceof Error ? error.message : error);
+    return [];
+  }
 }
 
+/**
+ * Adds warning comments and labels to the specified issues
+ */
 export async function addWarningToIssues(
   issues: Issue[],
-  commentText: string
+  commentText: string,
 ): Promise<OperationResult[]> {
-  return Promise.all(issues.map(async issue => {
+  const addWarning = async (issue: Issue): Promise<OperationResult> => {
     try {
       await octokit.rest.issues.createComment({
         owner: OWNER,
         repo: REPO,
         issue_number: issue.number,
-        body: commentText
+        body: commentText,
       });
 
       await octokit.rest.issues.addLabels({
         owner: OWNER,
         repo: REPO,
         issue_number: issue.number,
-        labels: [WARNING_LABEL]
+        labels: [WARNING_LABEL],
       });
 
       debug("Added warning", { issueNumber: issue.number });
@@ -146,14 +175,20 @@ export async function addWarningToIssues(
       return {
         issueNumber: issue.number,
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
-  }));
+  };
+
+  const results = await Promise.all(issues.map(addWarning));
+  return results;
 }
 
+/**
+ * Closes the specified inactive issues with a closing comment
+ */
 export async function closeInactiveIssues(issues: Issue[]): Promise<OperationResult[]> {
-  return Promise.all(issues.map(async issue => {
+  const closeIssue = async (issue: Issue): Promise<OperationResult> => {
     try {
       const { lastHumanActivity } = getIssueState(issue);
       const closeMessage = `🔒 Auto-closed: No activity since ${lastHumanActivity.toISOString()}\n\n` +
@@ -165,14 +200,14 @@ export async function closeInactiveIssues(issues: Issue[]): Promise<OperationRes
         repo: REPO,
         issue_number: issue.number,
         state: "closed",
-        state_reason: "completed"
+        state_reason: "completed",
       });
 
       await octokit.rest.issues.createComment({
         owner: OWNER,
         repo: REPO,
         issue_number: issue.number,
-        body: closeMessage
+        body: closeMessage,
       });
 
       debug("Closed inactive issue", { issueNumber: issue.number });
@@ -181,8 +216,11 @@ export async function closeInactiveIssues(issues: Issue[]): Promise<OperationRes
       return {
         issueNumber: issue.number,
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
-  }));
+  };
+
+  const results = await Promise.all(issues.map(closeIssue));
+  return results;
 }
