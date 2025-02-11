@@ -135,10 +135,18 @@ export async function getInactiveWarnedIssues(): Promise<Issue[]> {
     return issues.filter(issue => {
       const { lastHumanActivity, warningDate, hasWarning, hoursSinceActivity } = getIssueState(issue);
 
+      // Must have a warning label and warning comment
       if (!hasWarning || !warningDate) return false;
 
+      // Check if there was activity after the warning
       const activityAfterWarning = isAfter(lastHumanActivity, warningDate);
-      return !activityAfterWarning && hoursSinceActivity > INACTIVITY_THRESHOLD_HOURS;
+      if (activityAfterWarning) return false;
+
+      // Calculate hours since warning was issued
+      const hoursSinceWarning = hoursSince(warningDate.toISOString());
+
+      // Only close if enough time has passed since the warning
+      return hoursSinceWarning >= INACTIVITY_THRESHOLD_HOURS;
     });
   } catch (error) {
     console.error("Failed to get inactive warned issues:", error instanceof Error ? error.message : error);
