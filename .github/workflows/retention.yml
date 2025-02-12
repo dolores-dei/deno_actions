@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: doloresdei/qa-retention:latest
+      options: --workdir /app
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RETENTION_HOURS: ${{ inputs.retention_hours || 48 }}
