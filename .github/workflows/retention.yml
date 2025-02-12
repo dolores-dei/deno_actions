@@ -10,6 +10,10 @@ on:
         description: 'Enable debug logging'
         required: false
         default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
       retention_hours:
         description: 'Hours before warning (default: 48)'
         required: false
