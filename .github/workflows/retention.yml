@@ -26,14 +26,6 @@ on:
 jobs:
   check-retention:
     runs-on: ubuntu-latest
-    container:
-      image: doloresdei/qa-retention:latest
-      options: --workdir /app
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        RETENTION_HOURS: ${{ inputs.retention_hours || 48 }}
-        INACTIVITY_THRESHOLD_HOURS: ${{ inputs.inactivity_hours || 24 }}
-        DEBUG: ${{ inputs.debug || 'false' }}
     permissions:
       issues: write
       contents: read
@@ -41,4 +33,10 @@ jobs:
 
     steps:
       - name: Run Retention Check
-        run: deno run -A retention/main.ts
+        run: |
+          docker run --rm \
+            -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            -e RETENTION_HOURS=${{ inputs.retention_hours || 48 }} \
+            -e INACTIVITY_THRESHOLD_HOURS=${{ inputs.inactivity_hours || 24 }} \
+            -e DEBUG=${{ inputs.debug || 'false' }} \
+            doloresdei/qa-retention:latest
