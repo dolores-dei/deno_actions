@@ -10,7 +10,9 @@ export interface GitHubUser {
  */
 export interface IssueComment {
   created_at: string;
-  user: GitHubUser;
+  user: {
+    login: string;
+  };
   body?: string;
 }
 
@@ -22,9 +24,14 @@ export interface Issue {
   title: string;
   created_at: string;
   updated_at: string;
-  user: GitHubUser;
+  user: {
+    login: string;
+  };
+  labels: Array<{
+    name: string;
+  }>;
   comments?: IssueComment[];
-  labels: { name: string }[];
+  state?: "open" | "closed";
 }
 
 /**
@@ -62,9 +69,9 @@ export interface AppConfig {
 }
 
 /**
- * Activity types that can occur on an issue
+ * Type of activity that can occur on an issue
  */
-export type ActivityType = 'creation' | 'comment';
+export type ActivityType = "create" | "comment" | "label";
 
 /**
  * Represents an activity on an issue
