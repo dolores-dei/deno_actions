@@ -1,30 +1,8 @@
 import { octokit, config } from "./config.ts";
 import { Issue, IssueComment } from "./types.ts";
+import { components } from "npm:@octokit/openapi-types";
 
 const { OWNER, REPO } = config;
-
-interface GitHubLabel {
-  name: string;
-}
-
-interface GitHubUser {
-  login: string;
-}
-
-interface GitHubIssue {
-  number: number;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  labels: GitHubLabel[];
-  user: GitHubUser;
-}
-
-interface GitHubComment {
-  created_at: string;
-  user: GitHubUser;
-  body?: string;
-}
 
 /**
  * Cache for API responses to minimize GitHub API calls
@@ -50,13 +28,15 @@ const api = {
         per_page: 100,
       });
 
-      const issues = data.map(({ number, title, created_at, updated_at, labels, user }: GitHubIssue) => ({
-        number,
-        title,
-        created_at,
-        updated_at,
-        user: { login: user.login },
-        labels: labels.map((l: GitHubLabel) => ({ name: l.name })),
+      const issues = data.map((issue: components["schemas"]["issue"]) => ({
+        number: issue.number,
+        title: issue.title,
+        created_at: issue.created_at,
+        updated_at: issue.updated_at,
+        user: { login: issue.user?.login || "unknown" },
+        labels: issue.labels?.map(label => 
+          typeof label === 'string' ? { name: label } : { name: label.name || "unknown" }
+        ) || [],
       }));
 
       cache.issues.set(cacheKey, issues);
@@ -80,10 +60,10 @@ const api = {
         issue_number: issueNumber,
       });
 
-      const comments = data.map(({ created_at, user, body }: GitHubComment) => ({
-        created_at,
-        user: { login: user.login },
-        body,
+      const comments = data.map((comment: components["schemas"]["issue-comment"]) => ({
+        created_at: comment.created_at,
+        user: { login: comment.user?.login || "unknown" },
+        body: comment.body,
       }));
 
       cache.comments.set(issueNumber, comments);

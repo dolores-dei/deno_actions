@@ -84,3 +84,15 @@ export interface IssueState {
   hasWarning: boolean;
   hoursSinceActivity: number;
 }
+
+export interface Label {
+  name: string;
+}
+
+export interface User {
+  login: string;
+}
+
+export interface IssueWithComments extends Issue {
+  comments: IssueComment[];
+}
