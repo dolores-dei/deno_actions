@@ -133,8 +133,15 @@ export async function getExpiredQAInstances(): Promise<Issue[]> {
     await Promise.all(instancesWithComments
       .filter(issue => issue.labels.some(l => l.name === WARNING_LABEL))
       .map(async (issue) => {
-        const { lastHumanActivity, warningDate, hasWarning } = getIssueState(issue);
-        if (hasWarning && warningDate && isAfter(lastHumanActivity, warningDate)) {
+        const { lastHumanActivity } = getIssueState(issue);
+        // If there's been any human activity in the last RETENTION_HOURS, remove the warning
+        const hoursSinceLastActivity = hoursSince(lastHumanActivity.toISOString());
+        if (hoursSinceLastActivity < RETENTION_HOURS) {
+          debug("Removing warning due to recent activity", {
+            issueNumber: issue.number,
+            hoursSinceLastActivity,
+            lastHumanActivity: lastHumanActivity.toISOString()
+          });
           await removeWarningLabel(issue.number);
           removedWarningLabels.add(issue.number);
         }
