@@ -16,25 +16,9 @@ function logSection(title: string): void {
  * Generates the warning message for expired QA instances
  */
 function generateWarningMessage(): string {
-  return `⚠️ **QA Instance Retention Warning**
+  return `⚠️ QA instance inactive for ${config.RETENTION_HOURS} hours
 
-This QA instance has exceeded the ${config.RETENTION_HOURS}h retention period.
-Created: ${new Date().toISOString()}
-
-**What does this mean?**
-- If there is no activity within ${config.INACTIVITY_THRESHOLD_HOURS}h, this issue will be automatically closed
-- Any comment from a team member will reset the retention timer
-- The warning label will be removed after new activity
-
-**Actions needed:**
-1. If you still need this QA instance:
-   - Add a comment explaining why it's still needed
-   - The retention timer will reset automatically
-2. If you no longer need this instance:
-   - You can close this issue now
-   - Or let it auto-close after ${config.INACTIVITY_THRESHOLD_HOURS}h of inactivity
-
-For questions about this process, please contact the infrastructure team.`;
+Add any comment (e.g. "bump") to keep open, or it will auto-close in ${config.INACTIVITY_THRESHOLD_HOURS} hours`;
 }
 
 /**

@@ -22,9 +22,9 @@ COPY *.ts ./
 RUN chown -R app:app /app
 
 # Set default environment variables
-ENV RETENTION_HOURS=168
-ENV INACTIVITY_THRESHOLD_HOURS=72
-ENV WARNING_LABEL="stale"
+ENV RETENTION_HOURS=48
+ENV INACTIVITY_THRESHOLD_HOURS=24
+ENV WARNING_LABEL="retention-warning"
 ENV DEBUG=false
 ENV DENO_DIR=/deno-dir
 

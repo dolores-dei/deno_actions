@@ -14,12 +14,24 @@ const hoursSince = (date: string): number =>
  * debug logging helper with timing information
  */
 const debug = (msg: string, data: unknown, startTime?: number): void => {
+  if (!config.DEBUG) return;
+
   const logData = {
     ...typeof data === 'object' ? data : { value: data },
-    ...(startTime ? { durationMs: Date.now() - startTime } : {}),
-    timestamp: new Date().toISOString(),
+    ...(startTime ? { ms: Date.now() - startTime } : {}),
   };
-  console.log(`[DEBUG] ${msg}:`, JSON.stringify(logData, null, 2));
+
+  // Format the message to be more concise
+  const formattedData = Object.entries(logData)
+    .map(([k, v]) => {
+      if (k === 'ms') return `${v}ms`;
+      if (typeof v === 'number') return `${k}=${v}`;
+      if (typeof v === 'string') return `${k}="${v}"`;
+      return `${k}=${JSON.stringify(v)}`;
+    })
+    .join(' ');
+
+  console.log(`[${msg}] ${formattedData}`);
 };
 
 /**
