@@ -36,6 +36,8 @@ jobs:
         run: |
           docker run --rm \
             -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            -e GITHUB_OWNER=${{ github.repository_owner }} \
+            -e GITHUB_REPO=${{ github.event.repository.name }} \
             -e RETENTION_HOURS=${{ inputs.retention_hours || 48 }} \
             -e INACTIVITY_THRESHOLD_HOURS=${{ inputs.inactivity_hours || 24 }} \
             -e DEBUG=${{ inputs.debug || 'false' }} \
