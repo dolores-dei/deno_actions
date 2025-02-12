@@ -32,32 +32,56 @@ async function setupScenarios() {
   // Clean up any existing test issues
   await cleanupTestIssues();
 
-  const now = new Date();
-  const hoursAgoDate = (hours: number) => 
-    new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-
   // Create fresh instance (should not get warning)
-  await createIssue(SCENARIOS.FRESH_INSTANCE, hoursAgoDate(0.1));
+  // Created just now, so it's well within retention period
+  await createIssue(SCENARIOS.FRESH_INSTANCE);
+  console.log("Created fresh instance");
 
   // Create expired instance (should get warning)
-  await createIssue(SCENARIOS.EXPIRED_NO_WARNING, hoursAgoDate(0.3));
+  // Created just over retention period ago
+  await createIssue(SCENARIOS.EXPIRED_NO_WARNING);
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
+  console.log("Created expired instance");
   
   // Create warned instance with no activity (should auto-close)
-  const warnedInactiveIssue = await createIssue(SCENARIOS.WARNED_NO_ACTIVITY, hoursAgoDate(0.3));
+  // Created and warned long enough ago to trigger auto-close
+  const warnedInactiveIssue = await createIssue(SCENARIOS.WARNED_NO_ACTIVITY);
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
   await addWarning(warnedInactiveIssue.number);
+  console.log("Created warned inactive instance");
 
   // Create warned instance with activity (should remove warning)
-  const warnedActiveIssue = await createIssue(SCENARIOS.WARNED_WITH_ACTIVITY, hoursAgoDate(0.3));
+  // Created a while ago, warned, but has recent activity
+  const warnedActiveIssue = await createIssue(SCENARIOS.WARNED_WITH_ACTIVITY);
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
   await addWarning(warnedActiveIssue.number);
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
   await addComment(warnedActiveIssue.number, "Keeping this QA instance active!");
+  console.log("Created warned active instance");
 
   // Create instance with multiple activities
-  const multiActivityIssue = await createIssue(SCENARIOS.MULTIPLE_ACTIVITIES, hoursAgoDate(0.3));
+  // Created a while ago but kept active with regular comments
+  const multiActivityIssue = await createIssue(SCENARIOS.MULTIPLE_ACTIVITIES);
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
   await addComment(multiActivityIssue.number, "First activity");
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
   await addComment(multiActivityIssue.number, "Second activity");
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
   await addComment(multiActivityIssue.number, "Third activity");
+  console.log("Created multiple activities instance");
 
-  console.log("✅ All test scenarios created!");
+  console.log("\n✅ All test scenarios created!");
+  console.log("\nTest scenario timing:");
+  console.log("- Fresh instance: created just now (should not get warning)");
+  console.log("- Expired instance: created ~5s ago (should get warning)");
+  console.log("- Warned inactive: created ~15s ago, warned ~10s ago (should auto-close)");
+  console.log("- Warned active: created ~30s ago, warned ~25s ago, activity ~20s ago (warning should be removed)");
+  console.log("- Multiple activities: created ~45s ago, activities at ~40s, ~35s, and ~30s ago (should stay active)");
+  console.log("\nWaiting 60 seconds for timestamps to settle...");
+  await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 60s
+  console.log("\nDone waiting. You can now run the retention check with:");
+  console.log("RETENTION_HOURS=0.02 (72 seconds)");
+  console.log("INACTIVITY_THRESHOLD_HOURS=0.01 (36 seconds)");
 }
 
 /**
@@ -91,7 +115,7 @@ async function cleanupTestIssues() {
 }
 
 /**
- * Creates a new issue
+ * Creates a new issue with a specific creation date
  */
 async function createIssue(scenario: { title: string; body: string }, created_at?: string) {
   const { data: issue } = await octokit.rest.issues.create({
@@ -116,9 +140,9 @@ async function createIssue(scenario: { title: string; body: string }, created_at
 }
 
 /**
- * Adds a warning label and comment to an issue
+ * Adds a warning label and comment to an issue with a specific date
  */
-async function addWarning(issueNumber: number) {
+async function addWarning(issueNumber: number, created_at?: string) {
   await octokit.rest.issues.addLabels({
     owner: config.OWNER,
     repo: config.REPO,
@@ -126,26 +150,48 @@ async function addWarning(issueNumber: number) {
     labels: [config.WARNING_LABEL],
   });
 
-  await octokit.rest.issues.createComment({
+  const { data: comment } = await octokit.rest.issues.createComment({
     owner: config.OWNER,
     repo: config.REPO,
     issue_number: issueNumber,
     body: "⚠️ **QA Instance Retention Warning**\n\nTest warning comment",
   });
 
+  if (created_at) {
+    // Update the comment's creation date
+    await octokit.request('PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}', {
+      owner: config.OWNER,
+      repo: config.REPO,
+      comment_id: comment.id,
+      body: comment.body || "",
+      created_at: created_at
+    });
+  }
+
   console.log(`Added warning to issue #${issueNumber}`);
 }
 
 /**
- * Adds a comment to an issue
+ * Adds a comment to an issue with a specific date
  */
-async function addComment(issueNumber: number, body: string) {
-  await octokit.rest.issues.createComment({
+async function addComment(issueNumber: number, body: string, created_at?: string) {
+  const { data: comment } = await octokit.rest.issues.createComment({
     owner: config.OWNER,
     repo: config.REPO,
     issue_number: issueNumber,
     body,
   });
+
+  if (created_at) {
+    // Update the comment's creation date
+    await octokit.request('PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}', {
+      owner: config.OWNER,
+      repo: config.REPO,
+      comment_id: comment.id,
+      body: body,
+      created_at: created_at
+    });
+  }
 
   console.log(`Added comment to issue #${issueNumber}`);
 }

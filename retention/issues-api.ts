@@ -15,13 +15,13 @@ const cache = {
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const api = {
-  async issues(): Promise<Issue[]> {
+  async issues(octokitOverride = octokit): Promise<Issue[]> {
     const cacheKey = `${OWNER}/${REPO}`;
     const cached = cache.issues.get(cacheKey);
     if (cached) return cached;
 
     try {
-      const { data } = await octokit.rest.issues.listForRepo({
+      const { data } = await octokitOverride.rest.issues.listForRepo({
         owner: OWNER,
         repo: REPO,
         state: "open",
@@ -49,12 +49,12 @@ const api = {
     }
   },
 
-  async comments(issueNumber: number): Promise<IssueComment[]> {
+  async comments(issueNumber: number, octokitOverride = octokit): Promise<IssueComment[]> {
     const cached = cache.comments.get(issueNumber);
     if (cached) return cached;
 
     try {
-      const { data } = await octokit.rest.issues.listComments({
+      const { data } = await octokitOverride.rest.issues.listComments({
         owner: OWNER,
         repo: REPO,
         issue_number: issueNumber,
@@ -80,23 +80,23 @@ const api = {
 /**
  * Retrieves all open issues from the repository
  */
-export const getOpenIssues = () => api.issues();
+export const getOpenIssues = (octokitOverride = octokit) => api.issues(octokitOverride);
 
 /**
  * Retrieves all QA-ready instances (open issues with "QA-Instance ready" in title)
  */
-export const getQAReadyInstances = async () => {
-  const issues = await api.issues();
+export const getQAReadyInstances = async (octokitOverride = octokit) => {
+  const issues = await api.issues(octokitOverride);
   return issues.filter(i => i.title.includes("QA-Instance ready"));
 };
 
 /**
  * Retrieves all open issues with their comments
  */
-export const getOpenIssuesWithComments = async () => {
-  const issues = await api.issues();
+export const getOpenIssuesWithComments = async (octokitOverride = octokit) => {
+  const issues = await api.issues(octokitOverride);
   return Promise.all(
-    issues.map(async i => ({ ...i, comments: await api.comments(i.number) }))
+    issues.map(async i => ({ ...i, comments: await api.comments(i.number, octokitOverride) }))
   );
 };
 
