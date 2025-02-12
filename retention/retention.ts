@@ -76,7 +76,7 @@ const getIssueState = (issue: Issue): IssueState => {
     .filter(a => a.isBot && a.type === 'comment')
     .find(a => issue.comments?.find(c =>
       c.user.login === BOT_USERNAME &&
-      c.body?.includes('QA Instance Retention Warning') &&
+      c.body?.includes('QA instance inactive for') &&
       new Date(c.created_at).getTime() === a.date.getTime()
     ));
 
