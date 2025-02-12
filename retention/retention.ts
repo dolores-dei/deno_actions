@@ -128,17 +128,27 @@ export async function getExpiredQAInstances(): Promise<Issue[]> {
       totalWithComments: instancesWithComments.length 
     }, startTime);
 
+    // First, check all issues with warning labels for activity and track which ones had labels removed
+    const removedWarningLabels = new Set<number>();
+    await Promise.all(instancesWithComments
+      .filter(issue => issue.labels.some(l => l.name === WARNING_LABEL))
+      .map(async (issue) => {
+        const { lastHumanActivity, warningDate, hasWarning } = getIssueState(issue);
+        if (hasWarning && warningDate && isAfter(lastHumanActivity, warningDate)) {
+          await removeWarningLabel(issue.number);
+          removedWarningLabels.add(issue.number);
+        }
+      }));
+
+    // Then process expired instances that need warnings, excluding ones that just had labels removed
     const result = await Promise.all(instances.map(async (issue) => {
       const fullIssue = instancesWithComments.find(i => i.number === issue.number);
       if (!fullIssue) return null;
 
-      const { lastHumanActivity, warningDate, hasWarning, hoursSinceActivity } = getIssueState(fullIssue);
+      // Skip if we just removed the warning label from this issue
+      if (removedWarningLabels.has(issue.number)) return null;
 
-      // If there's a warning but activity after it, remove the warning
-      if (hasWarning && warningDate && isAfter(lastHumanActivity, warningDate)) {
-        await removeWarningLabel(issue.number);
-        return null;
-      }
+      const { hoursSinceActivity, hasWarning } = getIssueState(fullIssue);
 
       // Return issue if it's expired and doesn't have a warning
       return hoursSinceActivity > RETENTION_HOURS && !hasWarning ? issue : null;
