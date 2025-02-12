@@ -118,6 +118,7 @@ async function main() {
     ]);
 
     logSection("Retention Check Completed Successfully");
+    Deno.exit(0);
   } catch (error) {
     console.error("❌ Fatal error:", error instanceof Error ? error.message : error);
     logSection("Retention Check Failed");
