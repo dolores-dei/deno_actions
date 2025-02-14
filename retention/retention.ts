@@ -143,7 +143,7 @@ export async function getExpiredQAInstances(octokitOverride = defaultOctokit): P
       }));
 
     // Then process expired instances that need warnings, excluding ones that just had labels removed
-    const result = await Promise.all(instances.map(async (issue) => {
+    const result = await Promise.all(instances.map((issue) => {
       const fullIssue = instancesWithComments.find(i => i.number === issue.number);
       if (!fullIssue) return null;
 

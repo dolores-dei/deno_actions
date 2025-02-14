@@ -1,4 +1,4 @@
-import { Octokit } from "https://esm.sh/octokit@4.1.0?dts";
+import { Octokit } from "https://esm.sh/octokit?dts";
 
 /**
  * Configuration schema with defaults and validation

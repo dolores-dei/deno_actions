@@ -1,6 +1,6 @@
 import { octokit, config } from "./config.ts";
 import { Issue, IssueComment } from "./types.ts";
-import { components } from "npm:@octokit/openapi-types";
+import { components } from "https://esm.sh/@octokit/openapi-types?dts";
 
 const { OWNER, REPO } = config;
 
