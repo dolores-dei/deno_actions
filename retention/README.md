@@ -1,114 +1,70 @@
 # QA Instance Retention
 
-Automated cleanup of QA instances based on activity and retention rules.
+A simple tool to automatically clean up inactive QA instances in your GitHub repository.
 
-## Overview
+## What it does
 
-This tool automatically manages QA instances by:
-1. Warning about instances that exceed the retention period
-2. Closing instances that remain inactive after warning
+1. Finds QA instances (issues with "QA-Instance ready" in the title)
+2. Warns about instances that haven't had activity for a while
+3. Closes instances that remain inactive after the warning
+
+## Quick Start
+
+The easiest way to use this is through GitHub Actions. Just add this to your workflow:
+
+```yaml
+- name: Run Retention Check
+  run: |
+    docker run --rm \
+      -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+      -e GITHUB_OWNER=${{ github.repository_owner }} \
+      -e GITHUB_REPO=${{ github.event.repository.name }} \
+      doloresdei/qa-retention:latest
+```
 
 ## Configuration
 
-Configuration is done through environment variables:
+Simple environment variables to control the behavior:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RETENTION_HOURS` | Hours before warning is issued | 48 |
-| `INACTIVITY_THRESHOLD_HOURS` | Hours of inactivity before closing | 24 |
-| `WARNING_LABEL` | Label used to mark warned issues | retention-warning |
-| `DEBUG` | Enable detailed logging | false |
 | `GITHUB_TOKEN` | GitHub token for API access | Required |
+| `GITHUB_OWNER` | Repository owner | Required |
+| `GITHUB_REPO` | Repository name | Required |
+| `RETENTION_HOURS` | Hours before warning | 48 |
+| `INACTIVITY_THRESHOLD_HOURS` | Hours before closing | 24 |
+| `DEBUG` | Enable debug logs | false |
 
-## Usage
+## How it works
 
-### Using Docker
+1. **Warning**: Adds a comment and label when an instance is inactive for `RETENTION_HOURS`
+2. **Closing**: Closes the issue if it stays inactive for `INACTIVITY_THRESHOLD_HOURS` after the warning
+3. **Reset**: Any new comment removes the warning and resets the timer
 
-Build the container:
-```bash
-docker build -t qa-retention .
-```
-
-Run with environment variables:
-```bash
-docker run --rm \
-  -e GITHUB_TOKEN="your-token" \
-  -e RETENTION_HOURS=48 \
-  -e INACTIVITY_THRESHOLD_HOURS=24 \
-  qa-retention
-```
-
-### Local Development
+## Development
 
 Requirements:
 - Deno 2.x
 
-Setup:
-1. Clone the repository
-2. Create a GitHub token with `repo` scope
-3. Set environment variables:
-   ```bash
-   export GITHUB_TOKEN="your-token"
-   export RETENTION_HOURS=48
-   export INACTIVITY_THRESHOLD_HOURS=24
-   ```
-
-Development Commands:
+Local testing:
 ```bash
-# Run the tool
-deno task start
+# Set required env vars
+export GITHUB_TOKEN="your-token"
+export GITHUB_OWNER="your-username"
+export GITHUB_REPO="your-repo"
 
-# Development tasks
-deno task check  # Type checking
-deno task fmt    # Format code
-deno task lint   # Lint code
-deno task test   # Run tests
+# Run it
+deno task start
 ```
 
 ## GitHub Actions Integration
 
-The tool runs automatically via GitHub Actions:
-- Scheduled to run every hour using container
-- Can be triggered manually with custom parameters
-- Uses repository's GITHUB_TOKEN by default
+The tool comes with a ready-to-use workflow that:
+- Runs every hour automatically
+- Can be triggered manually with custom settings
+- Uses your repository's GITHUB_TOKEN
 
-### Manual Trigger Options
-
-When running manually, you can customize:
-- Debug logging
-- Retention period
-- Inactivity threshold
-
-## How It Works
-
-1. **Warning Phase**
-   - Identifies QA instances older than RETENTION_HOURS
-   - Adds warning comment and label
-   - Resets if there's new activity
-
-2. **Closing Phase**
-   - Checks warned instances for inactivity
-   - Closes if inactive for INACTIVITY_THRESHOLD_HOURS
-   - Adds closing comment explaining why
-
-## Logging
-
-- Normal mode: Basic operation logging
-- Debug mode: Detailed timing and state information
-- All errors are logged with context
-
-## Error Handling
-
-- Graceful handling of API failures
-- Automatic retry on rate limits
-- Clear error messages in logs
-- Failed operations don't affect others
-
-## Container Details
-
-The container is based on the official Deno image and:
-- Includes all dependencies
-- Has sensible defaults
-- Is configurable via environment variables
-- Automatically caches dependencies
-- Minimal size with multi-stage build 
+You can customize:
+- When to warn (`retention_hours`)
+- When to close (`inactivity_hours`)
+- Debug logging 
