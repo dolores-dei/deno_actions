@@ -1,32 +1,18 @@
 FROM denoland/deno:alpine-2.1.9
 
+# Set up application-specific environment variables
+ENV RETENTION_HOURS=48 \
+    INACTIVITY_THRESHOLD_HOURS=24 \
+    WARNING_LABEL="retention-warning" \
+    DEBUG=false
+
 WORKDIR /app
 
-# Create non-root user early
-RUN addgroup -S app && \
-    adduser -S app -G app
+# Copy and prepare application files
+COPY --chown=deno:deno *.ts deno.json ./
 
-# Set up Deno cache directory with correct permissions
-RUN mkdir -p /deno-dir && \
-    chown -R app:app /deno-dir
-
-# Copy application files
-COPY *.ts deno.json ./
-
-# Cache dependencies as root and set permissions
-RUN deno cache main.ts && \
-    chown -R app:app /deno-dir && \
-    chown -R app:app /app
-
-# Set default environment variables
-ENV RETENTION_HOURS=48
-ENV INACTIVITY_THRESHOLD_HOURS=24
-ENV WARNING_LABEL="retention-warning"
-ENV DEBUG=false
-ENV DENO_DIR=/deno-dir
-
-# Switch to non-root user
-USER app
+# Cache dependencies as deno user (already set in base image)
+RUN deno cache main.ts
 
 # Run the application
 CMD ["deno", "run", "-A", "main.ts"] 
