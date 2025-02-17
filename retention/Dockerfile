@@ -14,5 +14,5 @@ COPY --chown=deno:deno *.ts deno.json ./
 # Cache dependencies as deno user (already set in base image)
 RUN deno cache main.ts
 
-# Run the application
-CMD ["deno", "run", "-A", "main.ts"] 
+# Run the application with minimal required permissions
+CMD ["deno", "run", "--allow-net=api.github.com", "--allow-env", "main.ts"] 
