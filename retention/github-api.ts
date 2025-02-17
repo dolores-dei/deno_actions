@@ -93,9 +93,9 @@ export class GitHubClient {
   }
 
   async listIssues(): Promise<Issue[]> {
-    return this.retryWithRateLimit(async () => {
-      const data = await this.request<GitHubIssue[]>(`/repos/${this.owner}/${this.repo}/issues?state=open&per_page=100`);
-      return data.map(issue => ({
+    const data = await this.retryWithRateLimit(async () => {
+      const response = await this.request<GitHubIssue[]>(`/repos/${this.owner}/${this.repo}/issues?state=open&per_page=100`);
+      return response.map(issue => ({
         number: issue.number,
         title: issue.title,
         created_at: issue.created_at,
@@ -104,17 +104,19 @@ export class GitHubClient {
         labels: issue.labels.map(label => ({ name: label.name })),
       }));
     });
+    return data;
   }
 
   async listComments(issueNumber: number): Promise<IssueComment[]> {
-    return this.retryWithRateLimit(async () => {
-      const data = await this.request<GitHubComment[]>(`/repos/${this.owner}/${this.repo}/issues/${issueNumber}/comments`);
-      return data.map(comment => ({
+    const data = await this.retryWithRateLimit(async () => {
+      const response = await this.request<GitHubComment[]>(`/repos/${this.owner}/${this.repo}/issues/${issueNumber}/comments`);
+      return response.map(comment => ({
         created_at: comment.created_at,
         user: { login: comment.user.login },
         body: comment.body,
       }));
     });
+    return data;
   }
 
   async createComment(issueNumber: number, body: string): Promise<void> {
