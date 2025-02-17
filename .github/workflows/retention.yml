@@ -41,4 +41,4 @@ jobs:
             -e RETENTION_HOURS=${{ inputs.retention_hours || 48 }} \
             -e INACTIVITY_THRESHOLD_HOURS=${{ inputs.inactivity_hours || 24 }} \
             -e DEBUG=${{ inputs.debug || 'false' }} \
-            doloresdei/qa-retention:1.0.3
+            doloresdei/qa-retention:1.0.4

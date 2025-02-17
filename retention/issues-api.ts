@@ -1,6 +1,5 @@
-import { octokit, config } from "./config.ts";
+import { github, config } from "./config.ts";
 import { Issue, IssueComment } from "./types.ts";
-import { components } from "https://esm.sh/@octokit/openapi-types?dts";
 
 const { OWNER, REPO } = config;
 
@@ -15,33 +14,15 @@ const cache = {
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const api = {
-  async issues(octokitOverride = octokit): Promise<Issue[]> {
+  async issues(githubOverride = github): Promise<Issue[]> {
     const cacheKey = `${OWNER}/${REPO}`;
     const cached = cache.issues.get(cacheKey);
     if (cached) return cached;
 
     try {
-      const { data } = await octokitOverride.rest.issues.listForRepo({
-        owner: OWNER,
-        repo: REPO,
-        state: "open",
-        per_page: 100,
-      });
-
-      const issues = data.map((issue: components["schemas"]["issue"]) => ({
-        number: issue.number,
-        title: issue.title,
-        created_at: issue.created_at,
-        updated_at: issue.updated_at,
-        user: { login: issue.user?.login || "unknown" },
-        labels: issue.labels?.map(label => 
-          typeof label === 'string' ? { name: label } : { name: label.name || "unknown" }
-        ) || [],
-      }));
-
+      const issues = await githubOverride.listIssues();
       cache.issues.set(cacheKey, issues);
       setTimeout(() => cache.issues.delete(cacheKey), CACHE_TTL);
-
       return issues;
     } catch (error) {
       console.error("Failed to fetch issues:", error instanceof Error ? error.message : error);
@@ -49,26 +30,14 @@ const api = {
     }
   },
 
-  async comments(issueNumber: number, octokitOverride = octokit): Promise<IssueComment[]> {
+  async comments(issueNumber: number, githubOverride = github): Promise<IssueComment[]> {
     const cached = cache.comments.get(issueNumber);
     if (cached) return cached;
 
     try {
-      const { data } = await octokitOverride.rest.issues.listComments({
-        owner: OWNER,
-        repo: REPO,
-        issue_number: issueNumber,
-      });
-
-      const comments = data.map((comment: components["schemas"]["issue-comment"]) => ({
-        created_at: comment.created_at,
-        user: { login: comment.user?.login || "unknown" },
-        body: comment.body,
-      }));
-
+      const comments = await githubOverride.listComments(issueNumber);
       cache.comments.set(issueNumber, comments);
       setTimeout(() => cache.comments.delete(issueNumber), CACHE_TTL);
-
       return comments;
     } catch (error) {
       console.error(`Failed to fetch comments for issue #${issueNumber}:`, error instanceof Error ? error.message : error);
@@ -80,23 +49,23 @@ const api = {
 /**
  * Retrieves all open issues from the repository
  */
-export const getOpenIssues = (octokitOverride = octokit) => api.issues(octokitOverride);
+export const getOpenIssues = (githubOverride = github) => api.issues(githubOverride);
 
 /**
  * Retrieves all QA-ready instances (open issues with "QA-Instance ready" in title)
  */
-export const getQAReadyInstances = async (octokitOverride = octokit) => {
-  const issues = await api.issues(octokitOverride);
+export const getQAReadyInstances = async (githubOverride = github) => {
+  const issues = await api.issues(githubOverride);
   return issues.filter(i => i.title.includes("QA-Instance ready"));
 };
 
 /**
  * Retrieves all open issues with their comments
  */
-export const getOpenIssuesWithComments = async (octokitOverride = octokit) => {
-  const issues = await api.issues(octokitOverride);
+export const getOpenIssuesWithComments = async (githubOverride = github) => {
+  const issues = await api.issues(githubOverride);
   return Promise.all(
-    issues.map(async i => ({ ...i, comments: await api.comments(i.number, octokitOverride) }))
+    issues.map(async i => ({ ...i, comments: await api.comments(i.number, githubOverride) }))
   );
 };
 

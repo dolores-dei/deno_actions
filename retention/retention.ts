@@ -1,8 +1,8 @@
-import { octokit as defaultOctokit, config } from "./config.ts";
+import { github as defaultGithub, config } from "./config.ts";
 import { Issue, OperationResult, Activity, IssueState } from "./types.ts";
 import { getQAReadyInstances, getOpenIssuesWithComments } from "./issues-api.ts";
 
-const { OWNER, REPO, WARNING_LABEL, BOT_USERNAME, RETENTION_HOURS, INACTIVITY_THRESHOLD_HOURS } = config;
+const { WARNING_LABEL, BOT_USERNAME, RETENTION_HOURS, INACTIVITY_THRESHOLD_HOURS } = config;
 
 /**
  * Calculates the number of hours between now and a given date
@@ -54,6 +54,10 @@ const getIssueActivity = (issue: Issue): Activity[] => {
 
   // Add comments
   issue.comments?.forEach(comment => {
+    // Skip warning comments when considering activity
+    if (comment.body?.includes('QA instance inactive for')) {
+      return;
+    }
     activities.push({
       type: 'comment',
       date: new Date(comment.created_at),
@@ -69,16 +73,25 @@ const getIssueActivity = (issue: Issue): Activity[] => {
  */
 const getIssueState = (issue: Issue): IssueState => {
   const activities = getIssueActivity(issue);
-  const hasWarning = issue.labels.some(l => l.name === WARNING_LABEL);
+  const hasWarningLabel = issue.labels.some(l => l.name === WARNING_LABEL);
 
   // Find the last warning comment if any
-  const warningComment = activities
-    .filter(a => a.isBot && a.type === 'comment')
-    .find(a => issue.comments?.find(c =>
-      c.user.login === BOT_USERNAME &&
-      c.body?.includes('QA instance inactive for') &&
-      new Date(c.created_at).getTime() === a.date.getTime()
-    ));
+  const warningComment = issue.comments?.find(c =>
+    (c.user.login === BOT_USERNAME || c.user.login === 'dolores-dei') &&
+    c.body?.includes('QA instance inactive for')
+  );
+
+  debug("Comments for issue", {
+    issueNumber: issue.number,
+    totalComments: issue.comments?.length ?? 0,
+    botComments: issue.comments?.filter(c => c.user.login === BOT_USERNAME || c.user.login === 'dolores-dei').length ?? 0,
+    warningComments: issue.comments?.filter(c => c.body?.includes('QA instance inactive for')).length ?? 0,
+    comments: issue.comments?.map(c => ({
+      user: c.user.login,
+      body: c.body?.substring(0, 50) + '...',
+      created_at: c.created_at,
+    })),
+  });
 
   // Find the last human activity
   const humanActivities = activities.filter(a => !a.isBot);
@@ -89,20 +102,26 @@ const getIssueState = (issue: Issue): IssueState => {
     : new Date(issue.created_at);
 
   const hoursSinceActivity = hoursSince(lastHumanActivity.toISOString());
+  const warningDate = warningComment ? new Date(warningComment.created_at) : undefined;
+  
+  // An issue has a warning if it has both the label and a warning comment
+  const hasWarning = hasWarningLabel && warningComment !== undefined;
   
   debug("Issue state calculated", {
     issueNumber: issue.number,
     hasWarning,
+    hasWarningLabel,
+    hasWarningComment: warningComment !== undefined,
     hoursSinceActivity,
     lastHumanActivity: lastHumanActivity.toISOString(),
-    warningDate: warningComment?.date.toISOString(),
+    warningDate: warningDate?.toISOString(),
     totalActivities: activities.length,
     humanActivities: humanActivities.length,
   });
 
   return {
     lastHumanActivity,
-    warningDate: warningComment?.date,
+    warningDate,
     hasWarning,
     hoursSinceActivity,
   };
@@ -111,12 +130,12 @@ const getIssueState = (issue: Issue): IssueState => {
 /**
  * Gets all QA instances that have expired but haven't been warned yet
  */
-export async function getExpiredQAInstances(octokitOverride = defaultOctokit): Promise<Issue[]> {
+export async function getExpiredQAInstances(githubOverride = defaultGithub): Promise<Issue[]> {
   const startTime = Date.now();
   try {
     const [instances, instancesWithComments] = await Promise.all([
-      getQAReadyInstances(octokitOverride),
-      getOpenIssuesWithComments(octokitOverride),
+      getQAReadyInstances(githubOverride),
+      getOpenIssuesWithComments(githubOverride),
     ]);
 
     debug("Fetched QA instances", { 
@@ -137,7 +156,7 @@ export async function getExpiredQAInstances(octokitOverride = defaultOctokit): P
             warningDate: warningDate.toISOString(),
             lastHumanActivity: lastHumanActivity.toISOString()
           });
-          await removeWarningLabel(issue.number, octokitOverride);
+          await removeWarningLabel(issue.number, githubOverride);
           removedWarningLabels.add(issue.number);
         }
       }));
@@ -168,10 +187,10 @@ export async function getExpiredQAInstances(octokitOverride = defaultOctokit): P
 /**
  * Gets all warned issues that have been inactive for too long
  */
-export async function getInactiveWarnedIssues(octokitOverride = defaultOctokit): Promise<Issue[]> {
+export async function getInactiveWarnedIssues(githubOverride = defaultGithub): Promise<Issue[]> {
   const startTime = Date.now();
   try {
-    const issues = await getOpenIssuesWithComments(octokitOverride);
+    const issues = await getOpenIssuesWithComments(githubOverride);
     debug("Fetched issues with comments", { count: issues.length }, startTime);
 
     const inactiveIssues = issues.filter(issue => {
@@ -211,7 +230,7 @@ export async function getInactiveWarnedIssues(octokitOverride = defaultOctokit):
 export async function addWarningToIssues(
   issues: Issue[],
   commentText: string,
-  octokitOverride = defaultOctokit,
+  githubOverride = defaultGithub,
 ): Promise<OperationResult[]> {
   const startTime = Date.now();
   debug("Starting warning process", { issueCount: issues.length });
@@ -219,19 +238,8 @@ export async function addWarningToIssues(
   const addWarning = async (issue: Issue): Promise<OperationResult> => {
     const warningStartTime = Date.now();
     try {
-      await octokitOverride.rest.issues.createComment({
-        owner: OWNER,
-        repo: REPO,
-        issue_number: issue.number,
-        body: commentText,
-      });
-
-      await octokitOverride.rest.issues.addLabels({
-        owner: OWNER,
-        repo: REPO,
-        issue_number: issue.number,
-        labels: [WARNING_LABEL],
-      });
+      await githubOverride.createComment(issue.number, commentText);
+      await githubOverride.addLabels(issue.number, [WARNING_LABEL]);
 
       debug("Added warning", { issueNumber: issue.number }, warningStartTime);
       return { issueNumber: issue.number, success: true };
@@ -247,20 +255,17 @@ export async function addWarningToIssues(
   };
 
   const results = await Promise.all(issues.map(addWarning));
-  debug("Completed warning process", {
-    total: results.length,
-    succeeded: results.filter(r => r.success).length,
-    failed: results.filter(r => !r.success).length,
-  }, startTime);
+  debug("Completed warning process", { results }, startTime);
   return results;
 }
 
 /**
- * Closes the specified inactive issues with a closing comment
+ * Closes the specified issues
  */
-export async function closeInactiveIssues(
+export async function closeIssues(
   issues: Issue[],
-  octokitOverride = defaultOctokit,
+  commentText: string,
+  githubOverride = defaultGithub,
 ): Promise<OperationResult[]> {
   const startTime = Date.now();
   debug("Starting close process", { issueCount: issues.length });
@@ -268,27 +273,10 @@ export async function closeInactiveIssues(
   const closeIssue = async (issue: Issue): Promise<OperationResult> => {
     const closeStartTime = Date.now();
     try {
-      const { lastHumanActivity } = getIssueState(issue);
-      const closeMessage = `🔒 Auto-closed: No activity since ${lastHumanActivity.toISOString()}\n\n` +
-        `This QA instance exceeded the ${INACTIVITY_THRESHOLD_HOURS}h inactivity threshold after receiving a warning.\n` +
-        `If you need this instance again, please reopen the issue and add a comment explaining why.`;
+      await githubOverride.createComment(issue.number, commentText);
+      await githubOverride.updateIssue(issue.number, { state: 'closed' });
 
-      await octokitOverride.rest.issues.update({
-        owner: OWNER,
-        repo: REPO,
-        issue_number: issue.number,
-        state: "closed",
-        state_reason: "completed",
-      });
-
-      await octokitOverride.rest.issues.createComment({
-        owner: OWNER,
-        repo: REPO,
-        issue_number: issue.number,
-        body: closeMessage,
-      });
-
-      debug("Closed inactive issue", { issueNumber: issue.number }, closeStartTime);
+      debug("Closed issue", { issueNumber: issue.number }, closeStartTime);
       return { issueNumber: issue.number, success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -302,27 +290,16 @@ export async function closeInactiveIssues(
   };
 
   const results = await Promise.all(issues.map(closeIssue));
-  debug("Completed close process", {
-    total: results.length,
-    succeeded: results.filter(r => r.success).length,
-    failed: results.filter(r => !r.success).length,
-  }, startTime);
+  debug("Completed close process", { results }, startTime);
   return results;
 }
 
 /**
  * Removes the warning label from an issue
  */
-async function removeWarningLabel(issueNumber: number, octokitOverride = defaultOctokit): Promise<void> {
-  const startTime = Date.now();
+async function removeWarningLabel(issueNumber: number, githubOverride = defaultGithub): Promise<void> {
   try {
-    await octokitOverride.rest.issues.removeLabel({
-      owner: OWNER,
-      repo: REPO,
-      issue_number: issueNumber,
-      name: WARNING_LABEL,
-    });
-    debug("Removed warning label", { issueNumber }, startTime);
+    await githubOverride.removeLabel(issueNumber, WARNING_LABEL);
   } catch (error) {
     console.error(`Failed to remove warning label from issue #${issueNumber}:`, error instanceof Error ? error.message : error);
   }

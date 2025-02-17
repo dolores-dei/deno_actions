@@ -1,202 +1,201 @@
-import { octokit, config } from "./config.ts";
+import { github, config } from "./config.ts";
+import { Issue } from "./types.ts";
 
-const SCENARIOS = {
-  FRESH_INSTANCE: {
-    title: "QA-Instance ready [test-fresh]",
-    body: "Test scenario: Fresh instance that should not get warning",
-  },
-  EXPIRED_NO_WARNING: {
-    title: "QA-Instance ready [test-expired]",
-    body: "Test scenario: Old instance that should get warning",
-  },
-  WARNED_NO_ACTIVITY: {
-    title: "QA-Instance ready [test-warned-inactive]",
-    body: "Test scenario: Warned instance with no activity that should auto-close",
-  },
-  WARNED_WITH_ACTIVITY: {
-    title: "QA-Instance ready [test-warned-active]",
-    body: "Test scenario: Warned instance with recent activity that should have warning removed",
-  },
-  MULTIPLE_ACTIVITIES: {
-    title: "QA-Instance ready [test-multiple-activities]",
-    body: "Test scenario: Instance with multiple activities to test retention timer reset",
-  }
-};
+const { OWNER, REPO } = config;
 
-/**
- * Creates all test scenarios in the repository
- */
-async function setupScenarios() {
-  console.log("Setting up test scenarios...");
+interface GitHubLabel {
+  name: string;
+}
 
-  // Clean up any existing test issues
-  await cleanupTestIssues();
+interface GitHubUser {
+  login: string;
+}
 
-  // Create fresh instance (should not get warning)
-  // Created just now, so it's well within retention period
-  await createIssue(SCENARIOS.FRESH_INSTANCE);
-  console.log("Created fresh instance");
+interface GitHubIssue {
+  number: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  user: GitHubUser;
+  labels: GitHubLabel[];
+  pull_request?: unknown;
+}
 
-  // Create expired instance (should get warning)
-  // Created just over retention period ago
-  await createIssue(SCENARIOS.EXPIRED_NO_WARNING);
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-  console.log("Created expired instance");
-  
-  // Create warned instance with no activity (should auto-close)
-  // Created and warned long enough ago to trigger auto-close
-  const warnedInactiveIssue = await createIssue(SCENARIOS.WARNED_NO_ACTIVITY);
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-  await addWarning(warnedInactiveIssue.number);
-  console.log("Created warned inactive instance");
-
-  // Create warned instance with activity (should remove warning)
-  // Created a while ago, warned, but has recent activity
-  const warnedActiveIssue = await createIssue(SCENARIOS.WARNED_WITH_ACTIVITY);
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-  await addWarning(warnedActiveIssue.number);
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-  await addComment(warnedActiveIssue.number, "Keeping this QA instance active!");
-  console.log("Created warned active instance");
-
-  // Create instance with multiple activities
-  // Created a while ago but kept active with regular comments
-  const multiActivityIssue = await createIssue(SCENARIOS.MULTIPLE_ACTIVITIES);
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-  await addComment(multiActivityIssue.number, "First activity");
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-  await addComment(multiActivityIssue.number, "Second activity");
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
-  await addComment(multiActivityIssue.number, "Third activity");
-  console.log("Created multiple activities instance");
-
-  console.log("\n✅ All test scenarios created!");
-  console.log("\nTest scenario timing:");
-  console.log("- Fresh instance: created just now (should not get warning)");
-  console.log("- Expired instance: created ~5s ago (should get warning)");
-  console.log("- Warned inactive: created ~15s ago, warned ~10s ago (should auto-close)");
-  console.log("- Warned active: created ~30s ago, warned ~25s ago, activity ~20s ago (warning should be removed)");
-  console.log("- Multiple activities: created ~45s ago, activities at ~40s, ~35s, and ~30s ago (should stay active)");
-  console.log("\nWaiting 60 seconds for timestamps to settle...");
-  await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 60s
-  console.log("\nDone waiting. You can now run the retention check with:");
-  console.log("RETENTION_HOURS=0.02 (72 seconds)");
-  console.log("INACTIVITY_THRESHOLD_HOURS=0.01 (36 seconds)");
+interface GitHubError {
+  message: string;
 }
 
 /**
- * Removes all test issues from previous runs
+ * Creates a test issue with the specified title
  */
-async function cleanupTestIssues() {
-  console.log("Cleaning up previous test issues...");
-  
-  const { data: issues } = await octokit.rest.issues.listForRepo({
-    owner: config.OWNER,
-    repo: config.REPO,
-    state: "all",
-    per_page: 100,
-  });
-
-  const testIssues = issues.filter(issue => 
-    issue.title.includes("[test-") && 
-    !issue.pull_request // Exclude PRs
-  );
-
-  for (const issue of testIssues) {
-    await octokit.rest.issues.update({
-      owner: config.OWNER,
-      repo: config.REPO,
-      issue_number: issue.number,
-      state: "closed",
+export async function createTestIssue(title: string): Promise<Issue> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/issues`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title,
+        body: "Test issue created by retention test script",
+      }),
     });
-  }
 
-  console.log(`Cleaned up ${testIssues.length} test issues`);
+    const data = await response.json() as GitHubIssue | GitHubError;
+    
+    if (!response.ok) {
+      throw new Error(`Failed to create issue: ${(data as GitHubError).message}`);
+    }
+
+    const issue = data as GitHubIssue;
+    return {
+      number: issue.number,
+      title: issue.title,
+      created_at: issue.created_at,
+      updated_at: issue.updated_at,
+      user: { login: issue.user?.login || "unknown" },
+      labels: issue.labels?.map(label => ({ name: label.name })) || [],
+    };
+  } catch (error) {
+    console.error("Failed to create test issue:", error instanceof Error ? error.message : error);
+    throw error;
+  }
 }
 
 /**
- * Creates a new issue with a specific creation date
+ * Updates an issue's title and/or body
  */
-async function createIssue(scenario: { title: string; body: string }, created_at?: string) {
-  const { data: issue } = await octokit.rest.issues.create({
-    owner: config.OWNER,
-    repo: config.REPO,
-    title: scenario.title,
-    body: scenario.body,
-  });
-
-  if (created_at) {
-    // Update the creation date using a direct API call
-    await octokit.request('PATCH /repos/{owner}/{repo}/issues/{issue_number}', {
-      owner: config.OWNER,
-      repo: config.REPO,
-      issue_number: issue.number,
-      created_at: created_at
+export async function updateIssue(issueNumber: number, data: { title?: string; body?: string }): Promise<void> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/issues/${issueNumber}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${config.GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
     });
-  }
 
-  console.log(`Created issue #${issue.number}: ${scenario.title}`);
-  return issue;
+    if (!response.ok) {
+      const error = await response.json() as GitHubError;
+      throw new Error(`Failed to update issue: ${error.message}`);
+    }
+  } catch (error) {
+    console.error(`Failed to update issue #${issueNumber}:`, error instanceof Error ? error.message : error);
+    throw error;
+  }
 }
 
 /**
- * Adds a warning label and comment to an issue with a specific date
+ * Creates a comment on an issue
  */
-async function addWarning(issueNumber: number, created_at?: string) {
-  await octokit.rest.issues.addLabels({
-    owner: config.OWNER,
-    repo: config.REPO,
-    issue_number: issueNumber,
-    labels: [config.WARNING_LABEL],
-  });
-
-  const { data: comment } = await octokit.rest.issues.createComment({
-    owner: config.OWNER,
-    repo: config.REPO,
-    issue_number: issueNumber,
-    body: "⚠️ **QA Instance Retention Warning**\n\nTest warning comment",
-  });
-
-  if (created_at) {
-    // Update the comment's creation date
-    await octokit.request('PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}', {
-      owner: config.OWNER,
-      repo: config.REPO,
-      comment_id: comment.id,
-      body: comment.body || "",
-      created_at: created_at
-    });
+export async function createComment(issueNumber: number, body: string): Promise<void> {
+  try {
+    await github.createComment(issueNumber, body);
+  } catch (error) {
+    console.error(`Failed to create comment on issue #${issueNumber}:`, error instanceof Error ? error.message : error);
+    throw error;
   }
-
-  console.log(`Added warning to issue #${issueNumber}`);
 }
 
 /**
- * Adds a comment to an issue with a specific date
+ * Updates a comment
  */
-async function addComment(issueNumber: number, body: string, created_at?: string) {
-  const { data: comment } = await octokit.rest.issues.createComment({
-    owner: config.OWNER,
-    repo: config.REPO,
-    issue_number: issueNumber,
-    body,
-  });
-
-  if (created_at) {
-    // Update the comment's creation date
-    await octokit.request('PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}', {
-      owner: config.OWNER,
-      repo: config.REPO,
-      comment_id: comment.id,
-      body: body,
-      created_at: created_at
+export async function updateComment(commentId: number, body: string): Promise<void> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/issues/comments/${commentId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${config.GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ body }),
     });
-  }
 
-  console.log(`Added comment to issue #${issueNumber}`);
+    if (!response.ok) {
+      const error = await response.json() as GitHubError;
+      throw new Error(`Failed to update comment: ${error.message}`);
+    }
+  } catch (error) {
+    console.error(`Failed to update comment #${commentId}:`, error instanceof Error ? error.message : error);
+    throw error;
+  }
 }
 
-// Run setup if this is the main module
+/**
+ * Creates test scenarios for manual testing
+ */
+async function main() {
+  try {
+    console.log("Creating test scenarios...");
+
+    // Create a fresh QA instance
+    const fresh = await createTestIssue("[QA-Instance ready] Fresh instance");
+    console.log("Created fresh instance:", fresh.number);
+
+    // Create an old instance
+    const old = await createTestIssue("[QA-Instance ready] Old instance");
+    console.log("Created old instance:", old.number);
+
+    // Update the old instance's creation date to be older
+    const oldDate = new Date();
+    oldDate.setHours(oldDate.getHours() - (config.RETENTION_HOURS + 1));
+    await updateIssue(old.number, {
+      body: `Test issue created at ${oldDate.toISOString()}`,
+    });
+
+    // Clean up old test issues
+    console.log("Cleaning up previous test issues...");
+    
+    const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/issues?state=all&per_page=100`, {
+      headers: {
+        'Authorization': `Bearer ${config.GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch issues: ${response.statusText}`);
+    }
+
+    const issues = await response.json() as GitHubIssue[];
+    let cleanedCount = 0;
+
+    for (const issue of issues) {
+      if (issue.title.includes("[test-") && !issue.pull_request) {
+        const closeResponse = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/issues/${issue.number}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${config.GITHUB_TOKEN}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            state: "closed",
+          }),
+        });
+
+        if (!closeResponse.ok) {
+          console.warn(`Failed to close issue #${issue.number}: ${closeResponse.statusText}`);
+          continue;
+        }
+
+        cleanedCount++;
+      }
+    }
+
+    console.log(`Cleaned up ${cleanedCount} test issues`);
+    console.log("Test scenarios created successfully");
+  } catch (error) {
+    console.error("Failed to create test scenarios:", error instanceof Error ? error.message : error);
+    Deno.exit(1);
+  }
+}
+
 if (import.meta.main) {
-  await setupScenarios();
+  main();
 } 

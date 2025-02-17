@@ -1,6 +1,6 @@
 import { config, validateEnv } from "./config.ts";
 import { getOpenIssues, getQAReadyInstances } from "./issues-api.ts";
-import { getExpiredQAInstances, getInactiveWarnedIssues, addWarningToIssues, closeInactiveIssues } from "./retention.ts";
+import { getExpiredQAInstances, getInactiveWarnedIssues, addWarningToIssues, closeIssues } from "./retention.ts";
 import { Issue } from "./types.ts";
 
 /**
@@ -54,7 +54,11 @@ async function processInactiveIssues(inactiveIssues: Issue[]): Promise<void> {
   }
 
   console.log(`🔒 Found ${inactiveIssues.length} inactive warned issues to close...`);
-  const results = await closeInactiveIssues(inactiveIssues);
+  const closeMessage = `🔒 Auto-closed: No activity for ${config.INACTIVITY_THRESHOLD_HOURS}h after warning\n\n` +
+    `This QA instance exceeded the ${config.INACTIVITY_THRESHOLD_HOURS}h inactivity threshold after receiving a warning.\n` +
+    `If you need this instance again, please reopen the issue and add a comment explaining why.`;
+  
+  const results = await closeIssues(inactiveIssues, closeMessage);
   const succeeded = results.filter(r => r.success).length;
   const failed = results.filter(r => !r.success).length;
 

@@ -10,16 +10,13 @@ RUN addgroup -S app && \
 RUN mkdir -p /deno-dir && \
     chown -R app:app /deno-dir
 
-# Copy only necessary files for dependency caching
-COPY deno.json deno.lock ./
-
-# Cache dependencies as root
-RUN deno cache --lock=deno.lock https://esm.sh/octokit@4.1.0 && \
-    chown -R app:app /deno-dir
-
 # Copy application files
-COPY *.ts ./
-RUN chown -R app:app /app
+COPY *.ts deno.json ./
+
+# Cache dependencies as root and set permissions
+RUN deno cache main.ts && \
+    chown -R app:app /deno-dir && \
+    chown -R app:app /app
 
 # Set default environment variables
 ENV RETENTION_HOURS=48

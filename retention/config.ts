@@ -1,4 +1,4 @@
-import { Octokit } from "https://esm.sh/octokit?dts";
+import { GitHubClient } from "./github-api.ts";
 
 /**
  * Configuration schema with defaults and validation
@@ -97,19 +97,10 @@ export function validateEnv(): void {
 // Load config once at startup
 export const config = loadConfig();
 
-// Create Octokit instance with retry and rate limiting
-export const octokit = new Octokit({
-  auth: config.GITHUB_TOKEN,
-  retry: { enabled: true, retries: 3 },
-  throttle: {
-    enabled: true,
-    onRateLimit: (retryAfter: number) => {
-      console.warn(`Rate limit hit, retrying after ${retryAfter}s`);
-      return true;
-    },
-    onSecondaryRateLimit: (retryAfter: number) => {
-      console.warn(`Secondary rate limit hit, retrying after ${retryAfter}s`);
-      return true;
-    }
-  }
-});
+// Create GitHub client instance with retry and rate limiting
+export const github = new GitHubClient(
+  config.GITHUB_TOKEN,
+  config.OWNER,
+  config.REPO,
+  config.DEBUG
+);
