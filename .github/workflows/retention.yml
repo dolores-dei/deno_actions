@@ -32,13 +32,22 @@ jobs:
       packages: read
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+          
       - name: Run Retention Check
+        working-directory: ./retention
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+          RETENTION_HOURS: ${{ inputs.retention_hours || 48 }}
+          INACTIVITY_THRESHOLD_HOURS: ${{ inputs.inactivity_hours || 24 }}
+          DEBUG: ${{ inputs.debug || 'false' }}
         run: |
-          docker run --rm \
-            -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
-            -e GITHUB_OWNER=${{ github.repository_owner }} \
-            -e GITHUB_REPO=${{ github.event.repository.name }} \
-            -e RETENTION_HOURS=${{ inputs.retention_hours || 48 }} \
-            -e INACTIVITY_THRESHOLD_HOURS=${{ inputs.inactivity_hours || 24 }} \
-            -e DEBUG=${{ inputs.debug || 'false' }} \
-            doloresdei/qa-retention:1.0.4
+          deno run --allow-net=api.github.com --allow-env main.ts
